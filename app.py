@@ -1,7 +1,11 @@
 import streamlit as st
 from datetime import datetime, timedelta
+import pytz  # Para ajuste de fuso horário
 import folium
 from streamlit_folium import st_folium
+
+# Configurar o fuso horário da região
+LOCAL_TZ = pytz.timezone("America/Sao_Paulo")  # Substitua pelo fuso horário correto, se necessário
 
 # Tabela com velocidades médias (em km/h) para diferentes tipos de transporte
 transport_speeds = {
@@ -19,9 +23,9 @@ if "last_clicked" not in st.session_state:
 if "map_center" not in st.session_state:
     st.session_state.map_center = [-17.8575, -41.5057]
 if "hour" not in st.session_state:
-    st.session_state.hour = datetime.now().hour  # Hora atual
+    st.session_state.hour = datetime.now(LOCAL_TZ).hour  # Hora atual no fuso horário local
 if "minute" not in st.session_state:
-    st.session_state.minute = datetime.now().minute  # Minuto atual
+    st.session_state.minute = datetime.now(LOCAL_TZ).minute  # Minuto atual no fuso horário local
 if "radius_layer" not in st.session_state:
     st.session_state.radius_layer = None  # Camada inicial da mancha de raio
 
@@ -44,34 +48,37 @@ transport_mode = st.sidebar.selectbox("Selecione o Tipo de Transporte", list(tra
 
 # Botão de atualização
 if st.sidebar.button("Atualizar Mancha de Raio"):
-    current_time = datetime.now()
-    incident_time = datetime.combine(datetime.today(), datetime.min.time()) + timedelta(
-        hours=st.session_state.hour, minutes=st.session_state.minute
-    )
+    # Capturar o horário atual e o horário do fato no mesmo fuso horário
+    current_time = datetime.now(LOCAL_TZ)  # Horário atual no fuso local
+    incident_time = datetime.now(LOCAL_TZ).replace(hour=st.session_state.hour, minute=st.session_state.minute, second=0, microsecond=0)
+
+    # Calcular o tempo decorrido em segundos
     elapsed_seconds = (current_time - incident_time).total_seconds()
 
-    if st.session_state.last_clicked and elapsed_seconds >= 0:
-        latitude, longitude = st.session_state.last_clicked
-        speed_kmh = transport_speeds[transport_mode]
-        elapsed_hours = elapsed_seconds / 3600
-        max_distance_km = speed_kmh * elapsed_hours
+    # Verificar se há um ponto clicado e o tempo decorrido é válido
+    if st.session_state.last_clicked:
+        if elapsed_seconds >= 0:
+            latitude, longitude = st.session_state.last_clicked
+            speed_kmh = transport_speeds[transport_mode]
+            elapsed_hours = elapsed_seconds / 3600
+            max_distance_km = speed_kmh * elapsed_hours
 
-        # Atualizar a camada de raio no session_state
-        st.session_state.radius_layer = {
-            "latitude": latitude,
-            "longitude": longitude,
-            "radius": max_distance_km * 1000,  # Convertendo para metros
-            "popup": f"Raio de {max_distance_km:.2f} km"
-        }
+            # Atualizar a camada de raio no session_state
+            st.session_state.radius_layer = {
+                "latitude": latitude,
+                "longitude": longitude,
+                "radius": max_distance_km * 1000,  # Convertendo para metros
+                "popup": f"Raio de {max_distance_km:.2f} km"
+            }
+        else:
+            st.error("O horário do fato está no futuro! Por favor, escolha um horário válido.")
+    else:
+        st.error("Por favor, selecione um ponto no mapa antes de atualizar.")
 
 # Criar o mapa com o centro atual
 m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.zoom)
 
-# Adicionar funcionalidade de clique no mapa
-click_marker = folium.LatLngPopup()
-m.add_child(click_marker)
-
-# Adicionar marcador do local clicado
+# Adicionar marcador do local clicado, se houver
 if st.session_state.last_clicked:
     latitude, longitude = st.session_state.last_clicked
     folium.Marker(
@@ -96,6 +103,7 @@ output = st_folium(m, width=700, height=500)
 
 # Atualizar estado com base no clique do usuário
 if output and "last_clicked" in output and output["last_clicked"] is not None:
+    # Atualizar as coordenadas do clique no mapa
     st.session_state.last_clicked = (output["last_clicked"]["lat"], output["last_clicked"]["lng"])
     st.session_state.map_center = [output["last_clicked"]["lat"], output["last_clicked"]["lng"]]
 
