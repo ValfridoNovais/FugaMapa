@@ -28,6 +28,8 @@ if "minute" not in st.session_state:
     st.session_state.minute = datetime.now(LOCAL_TZ).minute  # Minuto atual no fuso horário local
 if "radius_layer" not in st.session_state:
     st.session_state.radius_layer = None  # Camada inicial da mancha de raio
+if "is_processing_click" not in st.session_state:
+    st.session_state.is_processing_click = False  # Estado do indicador de carregamento
 
 # Criar a interface
 st.title("Simulador de Mancha de Raio de Mobilidade")
@@ -75,6 +77,10 @@ if st.sidebar.button("Atualizar Mancha de Raio"):
     else:
         st.error("Por favor, selecione um ponto no mapa antes de atualizar.")
 
+# Exibir indicador de processamento, se necessário
+if st.session_state.is_processing_click:
+    st.info("Capturando ponto no mapa... Aguarde!")
+
 # Criar o mapa com o centro atual
 m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.zoom)
 
@@ -98,15 +104,15 @@ if st.session_state.radius_layer:
         popup=st.session_state.radius_layer["popup"]
     ).add_to(m)
 
-# Exibir o mapa com indicador de carregamento
-with st.spinner("Capturando ponto no mapa..."):
-    output = st_folium(m, width=700, height=500)
+# Registrar clique no mapa
+output = st_folium(m, width=700, height=500)
 
-# Atualizar estado com base no clique do usuário
 if output and "last_clicked" in output and output["last_clicked"] is not None:
-    # Atualizar as coordenadas do clique no mapa
-    st.session_state.last_clicked = (output["last_clicked"]["lat"], output["last_clicked"]["lng"])
-    st.session_state.map_center = [output["last_clicked"]["lat"], output["last_clicked"]["lng"]]
+    st.session_state.is_processing_click = True  # Ativar indicador de carregamento
+    latitude, longitude = output["last_clicked"]["lat"], output["last_clicked"]["lng"]
+    st.session_state.last_clicked = (latitude, longitude)
+    st.session_state.map_center = [latitude, longitude]
+    st.session_state.is_processing_click = False  # Desativar após capturar o ponto
 
 # Atualizar zoom se o usuário o modificar
 if output and "zoom" in output:
