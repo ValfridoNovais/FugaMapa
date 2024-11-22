@@ -1,6 +1,5 @@
 import streamlit as st
 from datetime import datetime, timedelta
-from geopy.distance import geodesic
 import folium
 from streamlit_folium import st_folium
 
@@ -12,56 +11,68 @@ transport_speeds = {
     "moto": 70,       # Velocidade média de uma moto
 }
 
-# Título da aplicação
+# Inicializando variáveis no session_state
+if "zoom" not in st.session_state:
+    st.session_state.zoom = 12
+if "last_clicked" not in st.session_state:
+    st.session_state.last_clicked = None
+if "map_center" not in st.session_state:
+    st.session_state.map_center = [-17.8575, -41.5057]
+if "hour" not in st.session_state:
+    st.session_state.hour = datetime.now().hour  # Hora atual
+if "minute" not in st.session_state:
+    st.session_state.minute = datetime.now().minute  # Minuto atual
+if "radius_layer" not in st.session_state:
+    st.session_state.radius_layer = None  # Camada inicial da mancha de raio
+
+# Criar a interface
 st.title("Simulador de Mancha de Raio de Mobilidade")
 
 # Sidebar para configurações
 st.sidebar.header("Configurações do Simulador")
 
-# Estado inicial para hora e minutos
-if "hour" not in st.session_state:
-    st.session_state.hour = 12
-if "minute" not in st.session_state:
-    st.session_state.minute = 0
-
-# Ajuste de hora e minutos com sliders e botões
-col1, col2 = st.sidebar.columns([1, 1])
-with col1:
-    if st.button("+ Hora"):
-        st.session_state.hour = (st.session_state.hour + 1) % 24
-    if st.button("+ Minuto"):
-        st.session_state.minute = (st.session_state.minute + 1) % 60
-with col2:
-    if st.button("- Hora"):
-        st.session_state.hour = (st.session_state.hour - 1) % 24
-    if st.button("- Minuto"):
-        st.session_state.minute = (st.session_state.minute - 1) % 60
-
-# Sliders para ajustar hora e minutos
-st.session_state.hour = st.sidebar.slider("Hora", 0, 23, st.session_state.hour)
-st.session_state.minute = st.sidebar.slider("Minuto", 0, 59, st.session_state.minute)
-
-# Calcula o horário do fato como objeto datetime
-incident_time = datetime.combine(datetime.today(), datetime.min.time()) + timedelta(
-    hours=st.session_state.hour, minutes=st.session_state.minute
+# Ajuste de hora e minutos com selectbox
+st.session_state.hour = st.sidebar.selectbox(
+    "Hora do Fato", list(range(24)), index=st.session_state.hour
+)
+st.session_state.minute = st.sidebar.selectbox(
+    "Minuto do Fato", list(range(60)), index=st.session_state.minute
 )
 
-# Entrada do tipo de transporte na sidebar
-st.sidebar.subheader("Selecione o Tipo de Transporte")
-transport_mode = st.sidebar.selectbox("Transporte", list(transport_speeds.keys()))
+# Escolha do transporte
+transport_mode = st.sidebar.selectbox("Selecione o Tipo de Transporte", list(transport_speeds.keys()))
 
-# Coordenadas iniciais: Teófilo Otoni, Minas Gerais
-initial_location = [-17.8575, -41.5057]  # Coordenadas de Teófilo Otoni
+# Botão de atualização
+if st.sidebar.button("Atualizar Mancha de Raio"):
+    current_time = datetime.now()
+    incident_time = datetime.combine(datetime.today(), datetime.min.time()) + timedelta(
+        hours=st.session_state.hour, minutes=st.session_state.minute
+    )
+    elapsed_seconds = (current_time - incident_time).total_seconds()
 
-# Recuperar o ponto clicado do mapa e manter estado
-if "last_clicked" not in st.session_state:
-    st.session_state.last_clicked = None
+    if st.session_state.last_clicked and elapsed_seconds >= 0:
+        latitude, longitude = st.session_state.last_clicked
+        speed_kmh = transport_speeds[transport_mode]
+        elapsed_hours = elapsed_seconds / 3600
+        max_distance_km = speed_kmh * elapsed_hours
 
-# Criar o mapa inicial
-m = folium.Map(location=initial_location, zoom_start=12)
+        # Atualizar a camada de raio no session_state
+        st.session_state.radius_layer = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "radius": max_distance_km * 1000,  # Convertendo para metros
+            "popup": f"Raio de {max_distance_km:.2f} km"
+        }
 
-# Adicionar alfinete se o ponto foi selecionado
-if st.session_state.last_clicked is not None:
+# Criar o mapa com o centro atual
+m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.zoom)
+
+# Adicionar funcionalidade de clique no mapa
+click_marker = folium.LatLngPopup()
+m.add_child(click_marker)
+
+# Adicionar marcador do local clicado
+if st.session_state.last_clicked:
     latitude, longitude = st.session_state.last_clicked
     folium.Marker(
         location=(latitude, longitude),
@@ -69,35 +80,25 @@ if st.session_state.last_clicked is not None:
         icon=folium.Icon(color="red", icon="info-sign"),
     ).add_to(m)
 
-    # Calcular a mancha de raio se as condições forem atendidas
-    current_time = datetime.now()
-    elapsed_seconds = (current_time - incident_time).total_seconds()
+# Adicionar a mancha de raio ao mapa, se existir
+if st.session_state.radius_layer:
+    folium.Circle(
+        location=(st.session_state.radius_layer["latitude"], st.session_state.radius_layer["longitude"]),
+        radius=st.session_state.radius_layer["radius"],
+        color="blue",
+        fill=True,
+        fill_opacity=0.5,
+        popup=st.session_state.radius_layer["popup"]
+    ).add_to(m)
 
-    if elapsed_seconds >= 0:
-        # Calcular a distância máxima percorrida
-        speed_kmh = transport_speeds[transport_mode]
-        elapsed_hours = elapsed_seconds / 3600  # Convertendo segundos para horas
-        max_distance_km = speed_kmh * elapsed_hours
-
-        # Adicionar círculo representando a mancha de mobilidade
-        folium.Circle(
-            location=(latitude, longitude),
-            radius=max_distance_km * 1000,  # Raio em metros
-            color="blue",
-            fill=True,
-            fill_opacity=0.5,
-            popup=f"Raio de {max_distance_km:.2f} km",
-        ).add_to(m)
-    else:
-        st.warning("O horário do fato não pode ser no futuro!")
-
-# Adicionar funcionalidade de clique no mapa
-click_marker = folium.LatLngPopup()
-m.add_child(click_marker)
-
-# Exibir o mapa interativo
+# Mostrar o mapa no Streamlit
 output = st_folium(m, width=700, height=500)
 
-# Capturar o clique do usuário e armazenar em `st.session_state`
+# Atualizar estado com base no clique do usuário
 if output and "last_clicked" in output and output["last_clicked"] is not None:
     st.session_state.last_clicked = (output["last_clicked"]["lat"], output["last_clicked"]["lng"])
+    st.session_state.map_center = [output["last_clicked"]["lat"], output["last_clicked"]["lng"]]
+
+# Atualizar zoom se o usuário o modificar
+if output and "zoom" in output:
+    st.session_state.zoom = output["zoom"]
