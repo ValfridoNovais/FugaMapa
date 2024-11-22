@@ -98,8 +98,9 @@ if st.session_state.radius_layer:
         popup=st.session_state.radius_layer["popup"]
     ).add_to(m)
 
-# Mostrar o mapa no Streamlit
-output = st_folium(m, width=700, height=500)
+# Exibir o mapa com indicador de carregamento
+with st.spinner("Capturando ponto no mapa..."):
+    output = st_folium(m, width=700, height=500)
 
 # Atualizar estado com base no clique do usuário
 if output and "last_clicked" in output and output["last_clicked"] is not None:
