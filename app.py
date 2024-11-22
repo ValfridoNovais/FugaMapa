@@ -11,8 +11,8 @@ LOCAL_TZ = pytz.timezone("America/Sao_Paulo")  # Substitua pelo fuso horário co
 transport_speeds = {
     "a pé": 5,        # Velocidade média de caminhada
     "bicicleta": 15,  # Velocidade média de bicicleta
-    "carro": 60,      # Velocidade média de um carro em área urbana
-    "moto": 70,       # Velocidade média de uma moto
+    "carro": 50,      # Velocidade média de um carro em área urbana
+    "moto": 60,       # Velocidade média de uma moto
 }
 
 # Inicializando variáveis no session_state
